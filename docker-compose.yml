@@ -1,0 +1,37 @@
+version: '3.3'
+services:
+  frontend:
+    image: frontend:latest
+    container_name: frontend_app
+    ports:
+      - "3000:3000"
+    networks:
+      - webnet
+
+  backend:
+    image: backend:latest
+    container_name: backend_app
+    ports:
+      - "8000:8000"
+    networks:
+      - webnet
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx_ssl
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ssl/deguoliuxueweg.cn_bundle.crt:/etc/ssl/certs/deguoliuxueweg.cn_bundle.crt
+      - ./ssl/deguoliuxueweg.cn.key:/etc/ssl/private/deguoliuxueweg.cn.key
+      - ./conf/nginx.conf:/etc/nginx/nginx.conf
+      - /home/ubuntu/weg/backend/static:/user/share/nginx/html
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - webnet
+
+networks:
+  webnet:

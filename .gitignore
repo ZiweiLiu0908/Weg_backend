@@ -1,0 +1,5 @@
+.idea/
+.flush_data/
+.wy_weg/
+.__pycache__/
+static/
