@@ -56,6 +56,7 @@ async def create_user(user: CreateUserSchema):
 
 @user_router.post("/login")
 async def login_for_access_token(userInput: LoginSchema):
+
     User_Repo = DB.get_User_repo()
 
     user = await User_Repo.find_one({"phone": userInput.phone})
@@ -69,7 +70,7 @@ async def login_for_access_token(userInput: LoginSchema):
             status_code=400,
             detail="Incorrect username or password"
         )
-
+    print(user)
     # 生成令牌
     access_token = create_access_token(
         data={"sub": str(user['_id'])}

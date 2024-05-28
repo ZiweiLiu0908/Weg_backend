@@ -105,7 +105,7 @@ async def search_fachs(query: str):
         results_list = []
         async for document in cursor:
             results_list.append({k: str(v) if isinstance(v, ObjectId) else v for k, v in document.items()})
-            # results_list[-1]['image'] = results_list[-1]['subject_image']
+            results_list[-1]['image'] = results_list[-1]['subject_image']
 
         if not results_list:
             print("No documents found for query:", query)
