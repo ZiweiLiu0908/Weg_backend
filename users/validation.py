@@ -19,8 +19,11 @@ class PasswordResetSchema(BaseModel):
     new_password: str  # 新密码
 
 
-class CreateAdminUserSchema(CreateUserSchema):
-    admin_key: SecretStr  # 使用SecretStr类型以确保敏感信息不会轻易泄露
+class CreateAdminUserSchema(BaseModel):
+    admin_key: str
+    phone: str
+    password: str
+
 
 
 class UpdateNickName(BaseModel):

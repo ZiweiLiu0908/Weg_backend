@@ -3,7 +3,7 @@ from typing import Optional
 from bson import ObjectId
 from pydantic import BaseModel, Field
 from datetime import datetime
-
+import pytz
 from Order.Schema.OrderSchema import get_beijing_time
 from Database.PyObjectId import PyObjectId
 
@@ -18,6 +18,12 @@ class DiscountCodeSchema(BaseModel):
     discount_percent: Optional[float] = None
     discount_type: str
     discount_code: str
+    limit_times: Field(default=int) = 1
+
+    def is_expired(self):
+        if self.expired_at is None:
+            return False  # 如果没有设置过期时间，认为不过期
+        return self.expired_at < datetime.now(pytz.timezone('Asia/Shanghai'))
 
     class Config:
         arbitrary_types_allowed = True

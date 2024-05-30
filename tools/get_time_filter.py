@@ -1,7 +1,7 @@
 # 根据筛选时间创建一个过滤器
 from datetime import timedelta
 
-from Admin.Schema.DateRange import DateRange
+from Admin.validation import DateRange
 
 
 def get_time_filter(dataRange: DateRange, keyword="created_at"):

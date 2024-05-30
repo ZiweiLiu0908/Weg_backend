@@ -5,7 +5,7 @@ from Order.Schema.OrderSchema import Package
 
 class CreateOrderSchema(BaseModel):
     discount_code: str
-    package: Package
+    package_tc: Package
 
 
 class getOneOrderStatusSchema(BaseModel):

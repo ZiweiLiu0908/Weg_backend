@@ -65,12 +65,12 @@ async def login_for_access_token(userInput: LoginSchema):
             status_code=400,
             detail="Incorrect username or password"
         )
-    if user['blackList']:
+    if user['black_list']:
         raise HTTPException(
             status_code=400,
             detail="Incorrect username or password"
         )
-    print(user)
+    # print(user)
     # 生成令牌
     access_token = create_access_token(
         data={"sub": str(user['_id'])}
@@ -136,18 +136,22 @@ async def create_admin_user(request: CreateAdminUserSchema):
     User_Repo = DB.get_User_repo()
     ADMIN_KEY = "your_very_secure_admin_key"  # 应从环境变量或更安全的地方获取
     # 验证管理员密钥
-    if request.admin_key.get_secret_value() != ADMIN_KEY:
+    if request.admin_key != ADMIN_KEY:
         raise HTTPException(status_code=403, detail="无效的管理员密钥")
 
-    # 验证验证码
-    verification_record = await PIN_Repo.find_one({"phone": request.phone})
-    if not verification_record or verification_record["code"] != request.code:
-        raise HTTPException(status_code=400, detail="无效的验证码")
+    user = await User_Repo.find_one({'phone': request.phone})
+    if user:
+        return {'status': 'failed', "message": 'phone已存在'}
+
+    # # 验证验证码
+    # verification_record = await PIN_Repo.find_one({"phone": request.phone})
+    # if not verification_record or verification_record["code"] != request.code:
+    #     raise HTTPException(status_code=400, detail="无效的验证码")
 
     # 检查验证码是否过期
-    if verification_record["expires_at"] < datetime.utcnow():
-        await PIN_Repo.delete_one({"_id": verification_record["_id"]})
-        raise HTTPException(status_code=400, detail="验证码已过期")
+    # if verification_record["expires_at"] < datetime.utcnow():
+    #     await PIN_Repo.delete_one({"_id": verification_record["_id"]})
+    #     raise HTTPException(status_code=400, detail="验证码已过期")
 
     # 加密密码
     hashed_password = pwd_context.hash(request.password)
@@ -165,7 +169,7 @@ async def create_admin_user(request: CreateAdminUserSchema):
     new_admin = await User_Repo.insert_one(new_admin.dict(by_alias=True))
 
     # 删除已使用的验证码
-    await PIN_Repo.delete_one({"_id": verification_record["_id"]})
+    # await PIN_Repo.delete_one({"_id": verification_record["_id"]})
 
     # 可以选择在这里生成和返回访问令牌
     access_token = create_access_token(data={"sub": str(new_admin.inserted_id)})

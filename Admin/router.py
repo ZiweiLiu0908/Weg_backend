@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
-from Admin.Schema.DateRange import DateRange
+from Admin.validation import DateRange, CreateDiscountCode
 from Database.database import DB
 from Order.Schema.DiscountSchema import DiscountType, DiscountCodeSchema
 from Order.Schema.OrderSchema import get_beijing_time
@@ -127,12 +127,18 @@ async def discount_code_exists(code):
 
 # 管理员创建优惠码
 @admin_router.post("/create_discount_code")
-async def create_discount_code(discount_amount: float, discount_type: DiscountType, validity_days: int,
-                               current_user_id: str = Depends(get_current_user)):
-    User_repo = DB.get_User_repo()
-    await verify_admin(User_repo, current_user_id)
+async def create_discount_code(inputInfo: CreateDiscountCode, current_user_id: str = Depends(get_current_user)):
+    discount_amount = inputInfo.discount_amount
+    discount_type = inputInfo.discount_type
+    validity_days = inputInfo.validity_days
+    limit_times = inputInfo.limit_times
 
-    discount_code = generate_unique_code()  # 生成唯一的优惠码
+    User_repo = DB.get_User_repo()
+    res, user = await verify_admin(User_repo, current_user_id)
+    if not res:
+        return {'status': 'failed', 'message': '无权限'}
+
+    discount_code = await generate_unique_code()  # 生成唯一的优惠码
 
     if discount_type == DiscountType.FIXED:
         discount_value = discount_amount
@@ -152,7 +158,8 @@ async def create_discount_code(discount_amount: float, discount_type: DiscountTy
         discount_type=discount_type,
         discount_code=discount_code,
         created_at=created_at,
-        expired_at=expired_at
+        expired_at=expired_at,
+        limit_times=limit_times,
     )
 
     DiscountCode_repo = DB.get_DiscountCodeSchema_repo()
@@ -160,4 +167,4 @@ async def create_discount_code(discount_amount: float, discount_type: DiscountTy
     if not result.acknowledged:
         raise HTTPException(status_code=500, detail="创建优惠码失败")
 
-    return {"message": "优惠码创建成功", "discount_code": discount_code}
+    return {"status": "success","message": "优惠码创建成功", "discount_code": discount_code}

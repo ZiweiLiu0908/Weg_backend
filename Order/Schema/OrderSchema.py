@@ -62,6 +62,7 @@ class OrderSchema(BaseModel):
     pay_time: Optional[datetime] = None
     apply_return_time: Optional[datetime] = None
     returned_time: Optional[datetime] = None
+    QR_code: str = None
 
     @root_validator(pre=True)
     def set_prices_and_expired_at(cls, values):

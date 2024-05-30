@@ -11,36 +11,47 @@ orders_router = APIRouter()
 
 
 # 创建新订单
-@orders_router.get("/createOrder")
+@orders_router.post("/createOrder")
 async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depends(get_current_user)):
     Order_repo = DB.get_OrderSchema_repo()
 
     # 查看优惠码类型
-    DiscountCode_repo = DB.get_DiscountCodeSchema_repo()
-    discount_code = orderInfo.discount_code
-    discount_code = await DiscountCode_repo.find_one({'discount_code': discount_code})
-    if not discount_code:
-        return {"message": "优惠码无效"}
+    if orderInfo.discount_code:
+        DiscountCode_repo = DB.get_DiscountCodeSchema_repo()
+        discount_code = orderInfo.discount_code
+        discount_code = await DiscountCode_repo.find_one({'discount_code': discount_code})
+        if not discount_code or discount_code.is_expired() or discount_code['limit_times'] <= 0:
+            return {"status": "failed", "message": "优惠码无效", 'couponIsValid': False}
 
-    # 创建订单
-    package = orderInfo.package
-    newOrder = OrderSchema(
-        user_id=current_user_id,
-        package=package,
-        discount_value=discount_code.discount_value,
-        discount_percent=discount_code.discount_percent,
-    )
-    newOrder = await Order_repo.insert_one(newOrder.dict(by_alias=True))
+        # 创建订单
+        package = orderInfo.package_tc
+        newOrder = OrderSchema(
+            user_id=current_user_id,
+            package=package,
+            discount_value=discount_code.discount_value,
+            discount_percent=discount_code.discount_percent,
+        )
+    else:
+        package = orderInfo.package_tc
+        newOrder = OrderSchema(
+            user_id=current_user_id,
+            package=package,
+        )
+    newOrderEntity = await Order_repo.insert_one(newOrder.dict(by_alias=True))
+    # print(newOrder)
 
     # 调用创建支付函数（从WY获取支付二维码）
     QR_code = None
+    order = None
     # QR_code = await wy_create_payment(str(newOrder.inserted_id), price=newOrder.real_price)
+    if QR_code:
+        order = await Order_repo.update_one({'_id': newOrderEntity.inserted_id}, {'$set': {'QR_code': QR_code}})
 
     # 加入第一个队列，每隔5分钟检查一次该订单是否支付成功，超过16分钟未支付则移出
     order_manager = OrderManager()
-    await order_manager.add_order_to_queue1(str(newOrder.inserted_id), newOrder.expired_at)
+    await order_manager.add_order_to_queue1(str(newOrderEntity.inserted_id), newOrder.expired_at)
 
-    return {"message": "create success", "QR_code": QR_code}
+    return {"message": "create success", "QR_code": QR_code, 'OrderId': str(newOrderEntity.inserted_id), 'order': order}
 
 
 # 查看用户的所有订单的状态
