@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -24,11 +26,11 @@ app.add_middleware(
 )
 app.mount("/backend_static", StaticFiles(directory="static"), name="static")
 
-
+# 初始化 OrderManager 实例
+# order_manager = None
 @app.on_event("startup")
 async def startup_event():
-    # 替换为你的MongoDB连接字符串和数据库名称
-    DB.initialize('mongodb://admin:Xiangyunduan2024@82.157.124.237:27017/', 'Weg')
+    await DB.initialize('mongodb://admin:Xiangyunduan2024@82.157.124.237:27017/', 'Weg')
 
 
 @app.on_event("shutdown")

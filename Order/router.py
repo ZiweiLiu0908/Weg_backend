@@ -1,11 +1,14 @@
+import json
 from bson import ObjectId
 from fastapi import APIRouter, Depends
-
-from Order.OrderManage.OrderManager import OrderManager
+from fastapi import Response, status, Request
+from Order.OrderManage.OrderQueueManager import order_manager
 from Order.Schema.OrderSchema import OrderSchema, OrderStatus
 from Order.validation import CreateOrderSchema, getOneOrderStatusSchema, AdminRefundDecisionSchema
 from Database.database import DB
+from tools.convert_datetime import convert_to_beijing_time
 from tools.verify_token import get_current_user
+from wechatpay.wechat_pay_asyn import WechatPay
 
 orders_router = APIRouter()
 
@@ -14,7 +17,7 @@ orders_router = APIRouter()
 @orders_router.post("/createOrder")
 async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depends(get_current_user)):
     Order_repo = DB.get_OrderSchema_repo()
-
+    from wechatpay.wechat_pay_asyn import WechatPay
     # 查看优惠码类型
     if orderInfo.discount_code:
         DiscountCode_repo = DB.get_DiscountCodeSchema_repo()
@@ -24,7 +27,7 @@ async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depen
             return {"status": "failed", "message": "优惠码无效", 'couponIsValid': False}
 
         # 创建订单
-        package = orderInfo.package_tc
+        package = orderInfo.package_tcx
         newOrder = OrderSchema(
             user_id=current_user_id,
             package=package,
@@ -41,17 +44,28 @@ async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depen
     # print(newOrder)
 
     # 调用创建支付函数（从WY获取支付二维码）
+    wechatPay = WechatPay()
     QR_code = None
-    order = None
-    # QR_code = await wy_create_payment(str(newOrder.inserted_id), price=newOrder.real_price)
-    if QR_code:
-        order = await Order_repo.update_one({'_id': newOrderEntity.inserted_id}, {'$set': {'QR_code': QR_code}})
 
-    # 加入第一个队列，每隔5分钟检查一次该订单是否支付成功，超过16分钟未支付则移出
-    order_manager = OrderManager()
-    await order_manager.add_order_to_queue1(str(newOrderEntity.inserted_id), newOrder.expired_at)
+    # int(newOrder.real_price * 100),
+    res = await wechatPay.create_wechat_pay_QRCode(str(newOrderEntity.inserted_id),
+                                                   1,
+                                                   description=newOrder.package,
+                                                   time_expire=convert_to_beijing_time(newOrder.expired_at)
+                                                   )
+    # print(res)
+    statusCode = res['code']
+    message = json.loads(res['message'])
 
-    return {"message": "create success", "QR_code": QR_code, 'OrderId': str(newOrderEntity.inserted_id), 'order': order}
+    if 200 <= int(statusCode) <= 300:
+        QR_code = message['code_url']
+        if QR_code:
+            order = await Order_repo.update_one({'_id': newOrderEntity.inserted_id}, {'$set': {'QR_code': QR_code}})
+
+        await order_manager.add_order_to_queue1(str(newOrderEntity.inserted_id), newOrder.expired_at)
+
+    return {"message": "create success", "QR_code": QR_code, 'OrderId': str(newOrderEntity.inserted_id),
+            'price': newOrder.real_price}
 
 
 # 查看用户的所有订单的状态
@@ -71,9 +85,9 @@ async def getOneOrderStatus(orderInfo: getOneOrderStatusSchema, current_user_id:
     order = await Order_repo.find_one({'_id': ObjectId(orderInfo.orderid)})
     if not order:
         return {"status": "fail", "message": '订单不存在'}
-    if order.user_id != current_user_id:
+    if order['user_id'] != current_user_id:
         return {"status": "fail", "message": '无权限访问'}
-    order_manager = OrderManager()
+
     is_in_queue2 = await order_manager.find_and_remove_from_queue2(orderInfo.orderid)
     order_status = OrderStatus.IN_PROGRESS if is_in_queue2 else OrderStatus.NOT_PAID
     # 查看是否在队列2中，有则返回成功。无则返回等待支付
@@ -95,10 +109,20 @@ async def applyReturn(orderInfo: getOneOrderStatusSchema, current_user_id: str =
     return {'message': "申请退款中", "orderStatus": OrderStatus.RETURNING}
 
 
-# # wechat回调地址，通知某个order支付结果（交给WY处理）
-# @orders_router.post("/WechatNotifyOrderStatus")
-# async def WechatNotifyOrderStatus():
-#     Order_repo = DB.get_OrderSchema_repo()
+@orders_router.post("/WechatNotifyOrderStatus")
+async def WechatNotifyOrderStatus(request: Request):
+    try:
+        headers = request.headers
+        body = await request.body()
+        wechatPay = WechatPay()
+        res = wechatPay.wxpay.callback(headers, body)
+        print(res)
+        return Response(status_code=status.HTTP_200_OK)
+    except Exception as e:
+        # 打印错误信息，方便调试
+        print(f"Error processing WeChat callback: {e}")
+        return Response(status_code=status.HTTP_400_BAD_REQUEST)
+
 
 # 管理员对“申请退款”的同意或拒绝
 @orders_router.post("/admin/refundDecision")

@@ -12,7 +12,7 @@ class Database:
     client: AsyncIOMotorClient = None
 
     @classmethod
-    def initialize(cls, uri, db_name):
+    async def initialize(cls, uri, db_name):
         cls.client = AsyncIOMotorClient(uri)
         cls.db = cls.client[db_name]
 
