@@ -1,16 +1,30 @@
 import json
+from datetime import datetime, timedelta
+
+import pytz
 from bson import ObjectId
 from fastapi import APIRouter, Depends
 from fastapi import Response, status, Request
 from Order.OrderManage.OrderQueueManager import order_manager
-from Order.Schema.OrderSchema import OrderSchema, OrderStatus
+from Order.Schema.OrderSchema import OrderSchema, OrderStatus, get_beijing_time
 from Order.validation import CreateOrderSchema, getOneOrderStatusSchema, AdminRefundDecisionSchema
 from Database.database import DB
 from tools.convert_datetime import convert_to_beijing_time
 from tools.verify_token import get_current_user
+
 from wechatpay.wechat_pay_asyn import WechatPay
 
 orders_router = APIRouter()
+NAME_MAP = {
+    'ai1': 'AI匹配1次',
+    'ai3': 'AI匹配3次',
+    'ai8': 'AI匹配8次',
+    'one': '套餐一',
+    'two': '套餐二',
+    'three': '套餐三',
+    'four': '套餐四',
+    'five': '套餐五',
+}
 
 
 # 创建新订单
@@ -27,7 +41,7 @@ async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depen
             return {"status": "failed", "message": "优惠码无效", 'couponIsValid': False}
 
         # 创建订单
-        package = orderInfo.package_tcx
+        package = orderInfo.package_tc
         newOrder = OrderSchema(
             user_id=current_user_id,
             package=package,
@@ -41,41 +55,74 @@ async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depen
             package=package,
         )
     newOrderEntity = await Order_repo.insert_one(newOrder.dict(by_alias=True))
-    # print(newOrder)
 
     # 调用创建支付函数（从WY获取支付二维码）
     wechatPay = WechatPay()
     QR_code = None
 
-    # int(newOrder.real_price * 100),
     res = await wechatPay.create_wechat_pay_QRCode(str(newOrderEntity.inserted_id),
                                                    1,
-                                                   description=newOrder.package,
+                                                   description=NAME_MAP[newOrder.package],
                                                    time_expire=convert_to_beijing_time(newOrder.expired_at)
                                                    )
-    # print(res)
     statusCode = res['code']
     message = json.loads(res['message'])
 
     if 200 <= int(statusCode) <= 300:
         QR_code = message['code_url']
         if QR_code:
-            order = await Order_repo.update_one({'_id': newOrderEntity.inserted_id}, {'$set': {'QR_code': QR_code}})
+            await Order_repo.update_one({'_id': newOrderEntity.inserted_id}, {'$set': {'QR_code': QR_code}})
 
-        await order_manager.add_order_to_queue1(str(newOrderEntity.inserted_id), newOrder.expired_at)
+        await order_manager.add_order_to_queue1(str(newOrderEntity.inserted_id), newOrder.expired_at, newOrder.package)
 
     return {"message": "create success", "QR_code": QR_code, 'OrderId': str(newOrderEntity.inserted_id),
-            'price': newOrder.real_price}
+            'price': newOrder.real_price, 'expired_at': newOrder.expired_at}
 
 
-# 查看用户的所有订单的状态
+def get_utc_time():
+    # 返回当前的 UTC 时间，带有时区信息
+    return datetime.utcnow().replace(tzinfo=pytz.utc)
+
+
+def ensure_utc(dt):
+    """确保 datetime 对象是 'aware' 并且设置为 UTC 时区"""
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        return dt.replace(tzinfo=pytz.utc)
+    return dt.astimezone(pytz.utc)
+
+
+def get_remain_time(expired_at):
+    """计算给定的 UTC 过期时间与当前 UTC 时间之间的剩余时间（秒）"""
+    current_time = get_utc_time()  # 使用 UTC 时间
+    expired_at = ensure_utc(expired_at)
+    one_minute_before_expired = expired_at - timedelta(minutes=1)
+
+    if current_time < one_minute_before_expired:
+        # 如果当前时间小于过期时间前一分钟，则返回剩余秒数
+        return int((one_minute_before_expired - current_time).total_seconds())
+    else:
+        # 否则，返回-1表示已过期或即将过期
+        return -1
+
+
 @orders_router.get("/getAllMyOrders")
 async def getAllMyOrders(current_user_id: str = Depends(get_current_user)):
     Order_repo = DB.get_OrderSchema_repo()
-    orders = await Order_repo.find({"user_id": current_user_id})
-    if not orders:
-        orders = []
-    return {"status": "success", "orders": orders}
+    # 直接请求数据库时排序
+    from pymongo import DESCENDING
+    cursor = Order_repo.find({"user_id": current_user_id}).sort("created_at", DESCENDING)
+    orders_data = await cursor.to_list(length=None)
+
+    for order_data in orders_data:
+        order_data['_id'] = str(order_data['_id'])
+        order_data['remain_time'] = get_remain_time(order_data['expired_at'])
+        if order_data['remain_time'] == -1:
+            order_data['status'] = 'EXPIRED'
+
+    if not orders_data:
+        orders_data = []
+
+    return {"status": "success", "orders": orders_data}
 
 
 # 查看用户的特定订单状态
@@ -88,9 +135,11 @@ async def getOneOrderStatus(orderInfo: getOneOrderStatusSchema, current_user_id:
     if order['user_id'] != current_user_id:
         return {"status": "fail", "message": '无权限访问'}
 
-    is_in_queue2 = await order_manager.find_and_remove_from_queue2(orderInfo.orderid)
+    is_in_queue2, package = await order_manager.find_and_remove_from_queue2(orderInfo.orderid)
     order_status = OrderStatus.IN_PROGRESS if is_in_queue2 else OrderStatus.NOT_PAID
-    # 查看是否在队列2中，有则返回成功。无则返回等待支付
+    if package in ['ai1', 'ai3', 'ai8']:
+        order_status = OrderStatus.FINISHED
+
     return {"status": "success", "orderStatus": order_status}
 
 

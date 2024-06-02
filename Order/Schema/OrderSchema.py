@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 class OrderStatus(str, Enum):
     NOT_PAID = "NOT_PAID"  # 已经创建但未付款
+    EXPIRED = "EXPIRED"  # 已经过期
     IN_PROGRESS = "IN_PROGRESS"  # 已经付款 订单开始制作
     FINISHED = "FINISHED"  # 订单已经完成 （完成状态）
     RETURNING = "RETURNING"  # 订单申请退款中
@@ -42,17 +43,19 @@ package_price_map = {
 
 
 def get_beijing_time():
-    utc_time = datetime.utcnow()
-    beijing_tz = pytz.timezone('Asia/Shanghai')
-    return utc_time.replace(tzinfo=pytz.utc).astimezone(beijing_tz)
+    utc_dt = datetime.utcnow()  # 获取 UTC 时间
+    utc_dt = utc_dt.replace(tzinfo=pytz.utc)  # 设置 UTC 时间的时区信息
+    beijing_tz = pytz.timezone('Asia/Shanghai')  # 获取北京时区
+    beijing_dt = utc_dt.astimezone(beijing_tz)  # 将 UTC 时间转换为北京时间
+    return beijing_dt
 
 
 class OrderSchema(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     user_id: str
-    created_at: datetime = Field(default_factory=get_beijing_time)  # 这里使用北京时间
+    created_at: datetime = Field(default_factory=get_beijing_time)
     expired_at: datetime = Field(
-        default_factory=lambda: get_beijing_time() + timedelta(minutes=16))  # 比created_at晚16min
+        default_factory=lambda: get_beijing_time() + timedelta(minutes=6))
     status: OrderStatus = OrderStatus.NOT_PAID
     package: Package
     org_price: float

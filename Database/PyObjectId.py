@@ -17,3 +17,7 @@ class PyObjectId(ObjectId):
         """Custom JSON Schema for PyObjectId."""
         schema.update(type="string", format="objectid")
         return schema
+
+    @classmethod
+    def __modify_schema__(cls, field_schema):
+        field_schema.update(type='string')
