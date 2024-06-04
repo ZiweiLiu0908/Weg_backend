@@ -61,15 +61,9 @@ async def login_for_access_token(userInput: LoginSchema):
 
     user = await User_Repo.find_one({"phone": userInput.phone})
     if not user or not pwd_context.verify(userInput.password, user["password"]):
-        raise HTTPException(
-            status_code=400,
-            detail="Incorrect username or password"
-        )
+        return {"message": '登陆失败', "reason": "用户名或密码错误"}
     if user['black_list']:
-        raise HTTPException(
-            status_code=400,
-            detail="Incorrect username or password"
-        )
+        return {"message": '登陆失败', "reason": "用户名或密码错误"}
     # print(user)
     # 生成令牌
     access_token = create_access_token(

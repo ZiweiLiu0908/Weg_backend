@@ -1,12 +1,10 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 from Database.PyObjectId import PyObjectId
 import pytz
 from bson import ObjectId
 from pydantic import BaseModel, Field, root_validator
 from datetime import datetime, timedelta
-
-
 
 
 class OrderStatus(str, Enum):
@@ -55,22 +53,29 @@ class OrderSchema(BaseModel):
     user_id: str
     created_at: datetime = Field(default_factory=get_beijing_time)
     expired_at: datetime = Field(
-        default_factory=lambda: get_beijing_time() + timedelta(minutes=6))
+        default_factory=lambda: get_beijing_time() + timedelta(minutes=2))
     status: OrderStatus = OrderStatus.NOT_PAID
     package: Package
     org_price: float
     real_price: float
+    discount_code: Optional[str] = None
     discount_value: Optional[float] = None
     discount_percent: Optional[float] = None
     pay_time: Optional[datetime] = None
     apply_return_time: Optional[datetime] = None
     returned_time: Optional[datetime] = None
     QR_code: str = None
+    ai_total_times: int
+    ai_used_times: int = 0
+    at_used_at: List[datetime] = []
 
     @root_validator(pre=True)
     def set_prices_and_expired_at(cls, values):
         package = values.get('package')
         if package:
+            if package in ['ai1', 'ai3', 'ai8']:
+                values['ai_total_times'] = int(package[-1])
+
             org_price = package_price_map.get(package)
             values['org_price'] = org_price
 
@@ -79,10 +84,10 @@ class OrderSchema(BaseModel):
 
             if discount_value is not None:
                 values['real_price'] = org_price - discount_value
-                values['discount_percent'] = round((discount_value / org_price) * 100, 2)
+                # values['discount_percent'] = round((discount_value / org_price) * 100, 2)
             elif discount_percent is not None:
                 values['real_price'] = org_price * (1 - discount_percent / 100)
-                values['discount_value'] = round(org_price * (discount_percent / 100), 2)
+                # values['discount_value'] = round(org_price * (discount_percent / 100), 2)
             else:
                 values['real_price'] = org_price  # 如果没有折扣，则实际价格等于原价
 
@@ -96,4 +101,3 @@ class OrderSchema(BaseModel):
             ObjectId: lambda oid: str(oid),
             datetime: lambda dt: dt.isoformat(),
         }
-

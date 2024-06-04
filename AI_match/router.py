@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 from typing import List
 
+import pytz
 from PIL import Image
 import aiofiles
 import io
@@ -180,7 +181,7 @@ async def create_transcript(new_trans: CreateTrans, current_user_id: str = Depen
 
 # 根据专业id和tranid做课程匹配
 @AI_match_router.post("/start_match_transcript")
-async def match_transcript_handler(matchInfo: StartMatch, current_user_id: str = Depends(get_current_user)):
+async def start_match_transcript(matchInfo: StartMatch, current_user_id: str = Depends(get_current_user)):
     FachRecordSchema_repo = DB.get_FachRecordSchema_repo()  # 专业的数据库集合
     Trans_Repo = DB.get_Transcript_repo()
     User_Repo = DB.get_User_repo()
@@ -193,6 +194,22 @@ async def match_transcript_handler(matchInfo: StartMatch, current_user_id: str =
     trans = await Trans_Repo.find_one({"_id": ObjectId(matchInfo.trans_id), "user_id": current_user_id})
     if not trans or trans['content'] is None:
         raise HTTPException(status_code=404, detail="Transcript not found or does not belong to the current user")
+
+    Order_repo = DB.get_OrderSchema_repo()
+
+    query = {
+        "user_id": current_user_id,
+        "package": {"$in": ["ai1", "ai3", "ai8"]},
+    }
+    cursor = Order_repo.find(query).sort("created_at", -1)
+    order_exists = False
+    async for order in cursor:
+        if order['ai_used_times'] < order['ai_total_times']:
+            order_exists = True
+
+    if not order_exists:
+        return {"message": "Match failed", 'reason': "无剩余次数"}
+
 
     Match_Repo = DB.get_MatchResult_repo()
 
@@ -240,7 +257,6 @@ async def getAllFachRecord(current_user_id: str = Depends(get_current_user)):
     unis = list(set(unis))
     unis = sorted(unis, key=lambda x: ''.join(lazy_pinyin(x)))
 
-    # unis = [''.join([p[0].upper() for p in pinyin(uni, style=Style.INITIALS)][0]) + ' ' + uni for uni in unis]
 
     for uni, fachs in uni_fach_pair.items():
         uni_fach_pair[uni] = sorted(fachs, key=lambda x: ''.join(lazy_pinyin(x)))
@@ -257,6 +273,25 @@ async def check_match_status_result(recordInfo: MatchResultSchema, current_user_
     match = await Match_Repo.find_one({'_id': ObjectId(recordInfo.MatchResultId)})
 
     if match['status'] != StatusEnum.已完成:
+        Order_repo = DB.get_OrderSchema_repo()
+        query = {
+            "user_id": current_user_id,
+            "package": {"$in": ["ai1", "ai3", "ai8"]},
+        }
+        earliest_order = await Order_repo.find_one(query, sort=[("created_at", 1)])
+        # 获取时区为北京时间
+        tz = pytz.timezone('Asia/Shanghai')
+        current_time = datetime.now(tz)
+
+        update_result = await Order_repo.update_one(
+            {'_id': earliest_order['_id']},  # 查询条件
+            {
+                '$inc': {'ai_used_times': -1},  # ai_used_times 减少 1
+                '$push': {'at_used_at': current_time}  # 在 at_used_at 添加当前时间
+            }
+        )
+
+
         return {'status': match['status'], 'result': None}
     else:
         return {'status': 'finished', 'result': match['result'], 'uni_cn_name': match['uni_cn_name'],
@@ -264,7 +299,7 @@ async def check_match_status_result(recordInfo: MatchResultSchema, current_user_
 
 
 @AI_match_router.get("/check_all_match")
-async def check_match_status_result(current_user_id: str = Depends(get_current_user)):
+async def check_all_match(current_user_id: str = Depends(get_current_user)):
     User_Repo = DB.get_User_repo()
     Match_Repo = DB.get_MatchResult_repo()
     user = await User_Repo.find_one({'_id': ObjectId(current_user_id)})

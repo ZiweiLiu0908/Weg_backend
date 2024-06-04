@@ -43,6 +43,7 @@ class OrderQueueManager:
 
     async def process_queue1(self):
         Order_repo = DB.get_OrderSchema_repo()
+        DiscountCode_repo = DB.get_DiscountCodeSchema_repo()
         while True:
             if self.queue1.empty():
                 break
@@ -55,10 +56,21 @@ class OrderQueueManager:
             wechatPay = WechatPay()
             try:
                 is_paid = await wechatPay.wy_check_order_status(order_id)
-                print(is_paid)
+                # print(is_paid)
                 if is_paid:
                     is_paid['message'] = json.loads(is_paid['message'])
                     if is_paid['message']['trade_state'] == 'SUCCESS':
+                        order = await Order_repo.find_one({'_id': ObjectId(order_id)})
+                        if 'discount_code' in order.keys():
+                            discount_code = order['discount_code']
+                            user_id = order['user_id']
+                            await DiscountCode_repo.find_one_and_update({'discount_code': discount_code},
+                                                                        {'$inc': {'limit_times': -1},
+                                                                         '$push': {'user_id': user_id,
+                                                                                   'used_at': str(datetime.utcnow())}
+                                                                         },
+                                                                        )
+
                         if package not in ['ai1', 'ai3', 'ai8']:
                             await Order_repo.update_one({'_id': ObjectId(order_id)},
                                                         {'$set': {'status': OrderStatus.IN_PROGRESS}})
