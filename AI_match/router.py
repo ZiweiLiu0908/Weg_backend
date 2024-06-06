@@ -210,7 +210,6 @@ async def start_match_transcript(matchInfo: StartMatch, current_user_id: str = D
     if not order_exists:
         return {"message": "Match failed", 'reason': "无剩余次数"}
 
-
     Match_Repo = DB.get_MatchResult_repo()
 
     new_Match = MatchSchema(
@@ -257,13 +256,29 @@ async def getAllFachRecord(current_user_id: str = Depends(get_current_user)):
     unis = list(set(unis))
     unis = sorted(unis, key=lambda x: ''.join(lazy_pinyin(x)))
 
-
     for uni, fachs in uni_fach_pair.items():
         uni_fach_pair[uni] = sorted(fachs, key=lambda x: ''.join(lazy_pinyin(x)))
         uni_fach_pair[uni] = list(set(uni_fach_pair[uni]))
 
     return {"message": 'success', 'unis': unis, 'uni_fach_pair': uni_fach_pair,
             'fach_recordId_pair': fach_recordId_pair}
+
+
+@AI_match_router.get("/check_ai_match_remain_times")
+async def check_ai_match_remain_times(current_user_id: str = Depends(get_current_user)):
+    Order_repo = DB.get_OrderSchema_repo()
+    cursor = Order_repo.find({"user_id": current_user_id})
+    orders_data = await cursor.to_list(length=None)
+    res = 0
+    # print(orders_data)
+    for order_data in orders_data:
+        if order_data['package'] not in ['ai1', 'ai3', 'ai8']:
+            continue
+        if order_data['status'] in ['NOT_PAID', 'EXPIRED']:
+            continue
+
+        res += (int(order_data['ai_total_times']) - int(order_data['ai_used_times']))
+    return {'status': 'success', 'remain_times': res}
 
 
 @AI_match_router.post("/check_specific_match_status")
@@ -286,11 +301,10 @@ async def check_match_status_result(recordInfo: MatchResultSchema, current_user_
         update_result = await Order_repo.update_one(
             {'_id': earliest_order['_id']},  # 查询条件
             {
-                '$inc': {'ai_used_times': -1},  # ai_used_times 减少 1
+                '$inc': {'ai_used_times': +1},  # ai_used_times 减少 1
                 '$push': {'at_used_at': current_time}  # 在 at_used_at 添加当前时间
             }
         )
-
 
         return {'status': match['status'], 'result': None}
     else:

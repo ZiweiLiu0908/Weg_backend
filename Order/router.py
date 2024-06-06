@@ -60,6 +60,7 @@ def is_expired(expiredAt):
 
 
 # 创建新订单
+# C24L0wt2
 @orders_router.post("/createOrder")
 async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depends(get_current_user)):
     Order_repo = DB.get_OrderSchema_repo()
@@ -69,8 +70,14 @@ async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depen
         DiscountCode_repo = DB.get_DiscountCodeSchema_repo()
         discount_code = orderInfo.discount_code
         discount_code = await DiscountCode_repo.find_one({'discount_code': discount_code})
+        # print(discount_code)
         if not discount_code or is_expired(discount_code['expired_at']) or discount_code['limit_times'] <= 0:
             return {"status": "failed", "message": "优惠码无效", 'couponIsValid': False}
+        if discount_code['discount_code'] == 'C24L0wt2':
+            package = orderInfo.package_tc
+            if package not in ['ai1', 'ai3', 'ai8']:
+                return {"status": "failed", "message": "优惠码无效", 'couponIsValid': False}
+
 
         # 创建订单
         package = orderInfo.package_tc
@@ -140,8 +147,9 @@ async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depen
 
         await order_manager.add_order_to_queue1(str(newOrderEntity.inserted_id), newOrder.expired_at, newOrder.package)
 
-    return {"message": "create success", "QR_code": QR_code, 'OrderId': str(newOrderEntity.inserted_id),
-            'price': newOrder.real_price, 'expired_at': newOrder.expired_at}
+        return {"message": "create success", "QR_code": QR_code, 'OrderId': str(newOrderEntity.inserted_id),
+                'price': newOrder.real_price, 'expired_at': newOrder.expired_at}
+    return {"message": "failed", 'reason': "unknown error"}
 
 
 @orders_router.get("/getAllMyOrders")
@@ -181,20 +189,6 @@ async def getOneOrderStatus(orderInfo: getOneOrderStatusSchema, current_user_id:
 
     return {"status": "success", "orderStatus": order_status}
 
-
-# # 用户申请特定订单的退款
-# @orders_router.post("/applyReturn")
-# async def applyReturn(orderInfo: getOneOrderStatusSchema, current_user_id: str = Depends(get_current_user)):
-#     Order_repo = DB.get_OrderSchema_repo()
-#     order = await Order_repo.find_one({'_id': ObjectId(orderInfo.orderid)})
-#     if not order:
-#         return {"status": "fail", "message": '订单不存在'}
-#     if order.user_id != current_user_id:
-#         return {"status": "fail", "message": '无权限访问'}
-#     if order.status != OrderStatus.IN_PROGRESS:
-#         return {"status": "fail", "message": '订单未支付或已完成，无法退款'}
-#     await Order_repo.update_one({"_id": ObjectId(orderInfo.orderid)}, {"$set": {"status": OrderStatus.RETURNING}})
-#     return {'message': "申请退款中", "orderStatus": OrderStatus.RETURNING}
 
 
 @orders_router.post("/WechatNotifyOrderStatus")

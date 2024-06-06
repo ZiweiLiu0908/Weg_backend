@@ -53,7 +53,7 @@ class OrderSchema(BaseModel):
     user_id: str
     created_at: datetime = Field(default_factory=get_beijing_time)
     expired_at: datetime = Field(
-        default_factory=lambda: get_beijing_time() + timedelta(minutes=2))
+        default_factory=lambda: get_beijing_time() + timedelta(minutes=6))
     status: OrderStatus = OrderStatus.NOT_PAID
     package: Package
     org_price: float
@@ -65,9 +65,9 @@ class OrderSchema(BaseModel):
     apply_return_time: Optional[datetime] = None
     returned_time: Optional[datetime] = None
     QR_code: str = None
-    ai_total_times: int
-    ai_used_times: int = 0
-    at_used_at: List[datetime] = []
+    ai_total_times: Optional[int] = 0
+    ai_used_times: Optional[int] = 0
+    at_used_at: Optional[List[datetime]] = []
 
     @root_validator(pre=True)
     def set_prices_and_expired_at(cls, values):
