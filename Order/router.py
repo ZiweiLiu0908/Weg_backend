@@ -162,9 +162,9 @@ async def getAllMyOrders(current_user_id: str = Depends(get_current_user)):
 
     for order_data in orders_data:
         order_data['_id'] = str(order_data['_id'])
-        order_data['remain_time'] = get_remain_time(order_data['expired_at'])
-        if order_data['remain_time'] == -1:
-            order_data['status'] = 'EXPIRED'
+        # order_data['remain_time'] = get_remain_time(order_data['expired_at'])
+        # if order_data['remain_time'] == -1:
+        #     order_data['status'] = 'EXPIRED'
 
     if not orders_data:
         orders_data = []

@@ -6,6 +6,11 @@ from bson import ObjectId
 from pydantic import BaseModel, Field, root_validator
 from datetime import datetime, timedelta
 
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
+from email.mime.multipart import MIMEMultipart
+
 
 class OrderStatus(str, Enum):
     NOT_PAID = "NOT_PAID"  # 已经创建但未付款
@@ -95,9 +100,55 @@ class OrderSchema(BaseModel):
             values['expired_at'] = values['created_at'] + timedelta(minutes=16)
         return values
 
+    # def check_status_change(self, new_status):
+    #     if self.status == OrderStatus.NOT_PAID and new_status in [OrderStatus.FINISHED, OrderStatus.IN_PROGRESS]:
+    #         sendOrder(self)
+
     class Config:
         arbitrary_types_allowed = True
         json_encoders = {
             ObjectId: lambda oid: str(oid),
             datetime: lambda dt: dt.isoformat(),
         }
+
+
+
+def sendOrder(order: OrderSchema):
+    from_addr = 'liudeweg@outlook.com'  # 发送邮箱地址
+    to_addrs = 'deguoliuxueweg@qq.com'  # 接收邮箱地址
+    password = 'Xiangyunduan2024$'  # 邮箱密码或授权码
+    smtp_server = 'smtp.office365.com'
+
+    try:
+        text = f'''
+        订单编号：{order['_id']}
+        用户编号：{order['user_id']}
+        创建时间：{order['created_at'].isoformat() if order['created_at'] else 'N/A'}
+        订单内容：{order['package']}
+        订单原价：{order['org_price']}
+        订单实付：{order['real_price']}
+        优惠码：{order['discount_code']}
+        优惠比例：{order['discount_percent']}
+        优惠金额：{order['discount_value']}
+        付款时间：{order['pay_time'].isoformat() if order['pay_time'] else 'N/A'}
+        退款时间：{order['returned_time'].isoformat() if order['returned_time'] else 'N/A'}
+        AI匹配总次数：{order['ai_total_times']}
+        AI匹配已使用次数：{order['ai_used_times']}
+        AI匹配使用时间：{', '.join([dt.isoformat() for dt in order['at_used_at']]) if order['at_used_at'] else 'N/A'}
+        '''
+        msg = MIMEMultipart()
+        txt = MIMEText(text, 'html', 'utf-8')
+        msg.attach(txt)
+        msg['From'] = Header(from_addr)
+        msg['To'] = Header(to_addrs)
+        msg['Subject'] = Header(f'Order Update: {order["id"]}-{order["user_id"]}')
+
+        server = smtplib.SMTP(smtp_server, 587)  # 使用 587 端口 for TLS
+        server.starttls()  # 启用 TLS
+        server.login(from_addr, password)
+        server.sendmail(from_addr, to_addrs, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f'Error sending email: {e}')
+        return False

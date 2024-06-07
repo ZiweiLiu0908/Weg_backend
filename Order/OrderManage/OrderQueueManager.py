@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from bson import ObjectId
 
 from Database.database import DB
-from Order.Schema.OrderSchema import OrderStatus
+from Order.Schema.OrderSchema import OrderStatus, sendOrder
 import pytz
 from tools.is_first_before_second_beijing import is_first_before_second_beijing
 from wechatpay.wechat_pay_asyn import WechatPay
@@ -77,7 +77,11 @@ class OrderQueueManager:
                         else:
                             await Order_repo.update_one({'_id': ObjectId(order_id)},
                                                         {'$set': {'status': OrderStatus.FINISHED}})
+
+                        neworder = await Order_repo.find_one({'_id': ObjectId(order_id)})
+                        sendOrder(neworder)
                         await self.add_order_to_queue2(order_id, package)
+
                     else:
                         await self.queue1.put((order_id, expired_at, package))
 

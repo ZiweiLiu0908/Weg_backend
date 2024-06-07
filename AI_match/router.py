@@ -203,8 +203,10 @@ async def start_match_transcript(matchInfo: StartMatch, current_user_id: str = D
     }
     cursor = Order_repo.find(query).sort("created_at", -1)
     order_exists = False
+    oldest_valid_orderid = None
     async for order in cursor:
         if order['ai_used_times'] < order['ai_total_times']:
+            oldest_valid_orderid = str(order['_id'])
             order_exists = True
 
     if not order_exists:
@@ -222,6 +224,25 @@ async def start_match_transcript(matchInfo: StartMatch, current_user_id: str = D
     result = await Match_Repo.insert_one(new_Match.dict(by_alias=True))
 
     content = await get_suggestion2course(trans['content'], fach_match_record['content'])
+
+    query = {
+        "user_id": current_user_id,
+        "package": {"$in": ["ai1", "ai3", "ai8"]},
+    }
+    earliest_order = await Order_repo.find_one(query, sort=[("created_at", 1)])
+    # 获取时区为北京时间
+    tz = pytz.timezone('Asia/Shanghai')
+    current_time = datetime.now(tz)
+
+    update_result = await Order_repo.update_one(
+        {'_id': earliest_order['_id']},  # 查询条件
+        {
+            '$inc': {'ai_used_times': +1},  # ai_used_times 减少 1
+            '$push': {'at_used_at': current_time}  # 在 at_used_at 添加当前时间
+        }
+    )
+
+
 
     await Match_Repo.update_one(
         {"_id": result.inserted_id},
@@ -288,24 +309,6 @@ async def check_match_status_result(recordInfo: MatchResultSchema, current_user_
     match = await Match_Repo.find_one({'_id': ObjectId(recordInfo.MatchResultId)})
 
     if match['status'] != StatusEnum.已完成:
-        Order_repo = DB.get_OrderSchema_repo()
-        query = {
-            "user_id": current_user_id,
-            "package": {"$in": ["ai1", "ai3", "ai8"]},
-        }
-        earliest_order = await Order_repo.find_one(query, sort=[("created_at", 1)])
-        # 获取时区为北京时间
-        tz = pytz.timezone('Asia/Shanghai')
-        current_time = datetime.now(tz)
-
-        update_result = await Order_repo.update_one(
-            {'_id': earliest_order['_id']},  # 查询条件
-            {
-                '$inc': {'ai_used_times': +1},  # ai_used_times 减少 1
-                '$push': {'at_used_at': current_time}  # 在 at_used_at 添加当前时间
-            }
-        )
-
         return {'status': match['status'], 'result': None}
     else:
         return {'status': 'finished', 'result': match['result'], 'uni_cn_name': match['uni_cn_name'],

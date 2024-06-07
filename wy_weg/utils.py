@@ -67,9 +67,9 @@ def load_api_key(type="ocr"):
     config.read('api_key.ini')
 
     if type=="ocr":
-        return '9qm6nxKKivCjvbxBg9lGlJ8V','Mq2CChMYaf9ZwdDWZhFG3UFlx5Q9ZXuu'
+        return 'kaNL2IAWpcBuWpNUBNAHrjug','zxpf1GKgxGKVTxz3bOV8onHLdG34Yf9q'
     elif type=="nlp":
-        return 'Mjdvh1SzO5C0V0fX4iz3ibVr','N7uvDZDG5uWe7U8cLTDz5Atsjg6Tcff5'
+        return 'KXoWc1ss5m159ycjlS59imRW','kpOlzq91f2A7uWWrSFh7Pf2roI7BA6yE'
 
 async def async_get_access_token(api_key:str,secret_key:str):
     """
