@@ -15,3 +15,12 @@ class getOneOrderStatusSchema(BaseModel):
 class AdminRefundDecisionSchema(BaseModel):
     orderid: str
     decision: str  # "approve" or "reject"
+
+
+class finishOrders(BaseModel):
+    orderid: str
+
+
+class refundOrders(BaseModel):
+    orderid: str
+    amount: str

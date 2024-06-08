@@ -6,8 +6,9 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends
 from fastapi import Response, status, Request
 from Order.OrderManage.OrderQueueManager import order_manager
-from Order.Schema.OrderSchema import OrderSchema, OrderStatus, get_beijing_time
-from Order.validation import CreateOrderSchema, getOneOrderStatusSchema, AdminRefundDecisionSchema
+from Order.Schema.OrderSchema import OrderSchema, OrderStatus, get_beijing_time, sendOrder
+from Order.validation import CreateOrderSchema, getOneOrderStatusSchema, AdminRefundDecisionSchema, finishOrders, \
+    refundOrders
 from Database.database import DB
 from tools.convert_datetime import convert_to_beijing_time
 from tools.verify_token import get_current_user
@@ -77,7 +78,6 @@ async def createOrder(orderInfo: CreateOrderSchema, current_user_id: str = Depen
             package = orderInfo.package_tc
             if package not in ['ai1', 'ai3', 'ai8']:
                 return {"status": "failed", "message": "优惠码无效", 'couponIsValid': False}
-
 
         # 创建订单
         package = orderInfo.package_tc
@@ -190,7 +190,6 @@ async def getOneOrderStatus(orderInfo: getOneOrderStatusSchema, current_user_id:
     return {"status": "success", "orderStatus": order_status}
 
 
-
 @orders_router.post("/WechatNotifyOrderStatus")
 async def WechatNotifyOrderStatus(request: Request):
     try:
@@ -199,11 +198,39 @@ async def WechatNotifyOrderStatus(request: Request):
         wechatPay = WechatPay()
         res = wechatPay.wxpay.callback(headers, body)
         print(res)
+        order_id = None
+        Order_repo = DB.get_OrderSchema_repo()
+        DiscountCode_repo = DB.get_DiscountCodeSchema_repo()
+        order = await Order_repo.find_one({'_id': ObjectId(order_id)})
+        package = order['package']
+        if 'discount_code' in order.keys():
+            discount_code = order['discount_code']
+            user_id = order['user_id']
+            await DiscountCode_repo.find_one_and_update({'discount_code': discount_code},
+                                                        {'$inc': {'limit_times': -1},
+                                                         '$push': {'user_id': user_id,
+                                                                   'used_at': str(datetime.utcnow())}
+                                                         },
+                                                        )
+
+        if package not in ['ai1', 'ai3', 'ai8']:
+            await Order_repo.update_one({'_id': ObjectId(order_id)},
+                                        {'$set': {'status': OrderStatus.IN_PROGRESS}})
+        else:
+            await Order_repo.update_one({'_id': ObjectId(order_id)},
+                                        {'$set': {'status': OrderStatus.FINISHED}})
+
+        neworder = await Order_repo.find_one({'_id': ObjectId(order_id)})
+        sendOrder(neworder)
+        await order_manager.add_order_to_queue2(order_id, package)
+        await order_manager.remove_from_queue1(order_id)
+
         return Response(status_code=status.HTTP_200_OK)
     except Exception as e:
         # 打印错误信息，方便调试
         print(f"Error processing WeChat callback: {e}")
         return Response(status_code=status.HTTP_400_BAD_REQUEST)
+
 
 # # 管理员对“申请退款”的同意或拒绝
 # @orders_router.post("/admin/refundDecision")
@@ -236,18 +263,50 @@ async def WechatNotifyOrderStatus(request: Request):
 #     return {"status": "success", "newStatus": new_status}
 
 
-# 管理员查看“申请退款RETURNING”状态中的订单
-# @orders_router.get("/admin/viewReturningOrders")
-# async def admin_view_returning_orders(current_user_id: str = Depends(get_current_user)):
-#     # 验证当前用户是否为管理员
-#     User_repo = DB.get_User_repo()
-#     user = await User_repo.find_one({'_id': ObjectId(current_user_id)})
-#     if user.role != '管理员':
-#         return {"status": "failed", "message": "无权限"}
-#
-#     # 查找所有状态为RETURNING的订单
-#     Order_repo = DB.get_OrderSchema_repo()
-#     returning_orders = await Order_repo.find({"status": OrderStatus.RETURNING})
-#     if not returning_orders:
-#         returning_orders = []
-#     return {"status": "success", "orders": returning_orders}
+# 管理员更新订单状态（完成订单）
+@orders_router.post("/admin/finishOrders")
+async def admin_finishOrders(userOrderId: finishOrders, current_user_id: str = Depends(get_current_user)):
+    # 验证当前用户是否为管理员
+    User_repo = DB.get_User_repo()
+    user = await User_repo.find_one({'_id': ObjectId(current_user_id)})
+    if user.role != '管理员':
+        return {"status": "failed", "message": "无权限"}
+
+    # 查找所有状态为RETURNING的订单
+    Order_repo = DB.get_OrderSchema_repo()
+    try:
+        await Order_repo.update_one({'_id': ObjectId(userOrderId.orderid)},
+                                    {'$set': {'status': OrderStatus.FINISHED}})
+        return {"status": "success", "orderId": userOrderId.orderid}
+    except:
+        return {"status": "fail"}
+
+
+@orders_router.post("/admin/refundOrders")
+async def admin_refundOrders(userOrderId: refundOrders, current_user_id: str = Depends(get_current_user)):
+    # 验证当前用户是否为管理员
+    User_repo = DB.get_User_repo()
+    user = await User_repo.find_one({'_id': ObjectId(current_user_id)})
+    if user.role != '管理员':
+        return {"status": "failed", "message": "无权限"}
+
+    # 查找所有状态为RETURNING的订单
+    Order_repo = DB.get_OrderSchema_repo()
+    order = await Order_repo.find_one({'user_id': ObjectId(userOrderId.orderid)})
+    if not order:
+        return {"status": "failed", "message": "订单不存在"}
+    wechatPay = WechatPay()
+    res = await wechatPay.refund(userOrderId.orderid,
+                                 userOrderId.orderid,
+                                 int(float(userOrderId.amount)*100),
+                                 int(order['real_price']*100),
+                                 '用户申请')
+    code = res['code']
+    message = res['message']
+    if 200 <= int(code) <= 300:
+        current_time = datetime.now(pytz.timezone('Asia/Shanghai'))
+        await Order_repo.update_one({'_id': ObjectId(userOrderId.orderid)},
+                                    {'$set': {'returned_time': current_time}})
+        return {"status": "success", "orderId": userOrderId.orderid}
+    else:
+        return {"status": "failed", "message": message}

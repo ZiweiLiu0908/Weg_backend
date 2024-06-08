@@ -92,6 +92,11 @@ class OrderQueueManager:
 
         self.is_running_queue1 = False
 
+
+    async def remove_from_queue1(self, order_id: str):
+        if order_id in self.queue1:
+            del self.queue1[order_id]
+
     async def remove_from_queue2(self, order_id: str):
         if order_id in self.queue2:
             del self.queue2[order_id]

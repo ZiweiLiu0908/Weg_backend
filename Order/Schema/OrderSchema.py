@@ -112,43 +112,47 @@ class OrderSchema(BaseModel):
         }
 
 
-
 def sendOrder(order: OrderSchema):
-    from_addr = 'liudeweg@outlook.com'  # 发送邮箱地址
-    to_addrs = 'deguoliuxueweg@qq.com'  # 接收邮箱地址
-    password = 'Xiangyunduan2024$'  # 邮箱密码或授权码
-    smtp_server = 'smtp.office365.com'
-
+    # print('sending message...')
+    # print(order)
     try:
-        text = f'''
-        订单编号：{order['_id']}
-        用户编号：{order['user_id']}
-        创建时间：{order['created_at'].isoformat() if order['created_at'] else 'N/A'}
-        订单内容：{order['package']}
-        订单原价：{order['org_price']}
-        订单实付：{order['real_price']}
-        优惠码：{order['discount_code']}
-        优惠比例：{order['discount_percent']}
-        优惠金额：{order['discount_value']}
-        付款时间：{order['pay_time'].isoformat() if order['pay_time'] else 'N/A'}
-        退款时间：{order['returned_time'].isoformat() if order['returned_time'] else 'N/A'}
-        AI匹配总次数：{order['ai_total_times']}
-        AI匹配已使用次数：{order['ai_used_times']}
-        AI匹配使用时间：{', '.join([dt.isoformat() for dt in order['at_used_at']]) if order['at_used_at'] else 'N/A'}
+        body = f'''
+            订单编号：{order['_id']}
+            用户编号：{order['user_id']}
+            创建时间：{order['created_at']}
+            订单内容：{order['package']}
+            订单原价：{order['org_price']}
+            订单实付：{order['real_price']}
+            优惠码：{order['discount_code']}
+            优惠比例：{order['discount_percent']}
+            优惠金额：{order['discount_value']}
+            付款时间：{order['pay_time']}
+            申请退款时间：{order['apply_return_time']}
+            退款时间：{order['returned_time']}
+            AI匹配总次数：{order['ai_total_times']}
+            AI匹配已使用次数：{order['ai_used_times']}
+            AI匹配使用时间：{order['at_used_at']}
         '''
-        msg = MIMEMultipart()
-        txt = MIMEText(text, 'html', 'utf-8')
-        msg.attach(txt)
-        msg['From'] = Header(from_addr)
-        msg['To'] = Header(to_addrs)
-        msg['Subject'] = Header(f'Order Update: {order["id"]}-{order["user_id"]}')
+        title = f'{order["_id"]}-{order["user_id"]}'
+        smtp_server = 'smtp.office365.com'
+        smtp_port = 587
+        username = 'liudeweg@outlook.com'
+        password = 'Xiangyunduan2024$'
 
-        server = smtplib.SMTP(smtp_server, 587)  # 使用 587 端口 for TLS
-        server.starttls()  # 启用 TLS
-        server.login(from_addr, password)
-        server.sendmail(from_addr, to_addrs, msg.as_string())
+        to_address = 'liudeweg@outlook.com'
+        msg = MIMEMultipart()
+        msg['From'] = username
+        msg['To'] = to_address
+        msg['Subject'] = title
+        msg.attach(MIMEText(body, 'plain'))
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()  # 启用TLS
+        server.login(username, password)
+        text = msg.as_string()
+        server.sendmail(username, to_address, text)
         server.quit()
         return True
-    except Exception as e:
-        print(f'Error sending email: {e}')
+    except:
+        # print('sending failed')
+
         return False

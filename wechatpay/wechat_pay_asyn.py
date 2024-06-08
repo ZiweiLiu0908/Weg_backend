@@ -3,7 +3,8 @@ import logging
 import os
 from wechatpayv3 import WeChatPay, WeChatPayType
 
-logging.basicConfig(filename=os.path.join(os.getcwd(), 'demo.log'), level=logging.DEBUG, filemode='a', format='%(asctime)s - %(process)s - %(levelname)s: %(message)s')
+logging.basicConfig(filename=os.path.join(os.getcwd(), 'demo.log'), level=logging.DEBUG, filemode='a',
+                    format='%(asctime)s - %(process)s - %(levelname)s: %(message)s')
 LOGGER = logging.getLogger("demo")
 
 
@@ -29,7 +30,7 @@ class WechatPay:
         config = configparser.ConfigParser()
         config.read('wechatpay/wechat_pay.ini')
 
-        self.pay_config={}
+        self.pay_config = {}
         private_key_path = config.get("WechatPay", "PRIVATE_KEY_PATH", fallback="")
         if not os.path.exists(private_key_path):
             raise FileNotFoundError(f"Private key file does not exist: {private_key_path}")
@@ -45,16 +46,16 @@ class WechatPay:
         self.pay_config["partner_mode"] = config.getboolean("WechatPay", "PARTNER_MODE")
         self.pay_config["proxy"] = config.get("WechatPay", "PROXY", fallback=None)
         self.pay_config["timeout"] = (10, 30)
-    
+
     async def create_wechat_pay_QRCode(self, trade_no, total_fee, description,
-                                 time_expire=None,
-                                 ):  
+                                       time_expire=None,
+                                       ):
         """
         trade_no: str, 商户系统内部订单号，只能是数字、大小写字母_-*且在同一个商户号下唯一。
         total_fee: int, 订单总金额，单位为分。
         description: str, 商品描述
         time_expire: str, 交易结束时间，示例值:'2018-06-08T10:34:56+08:00'
-        """  
+        """
         code, message = await self.wxpay.pay(
             description=description,
             out_trade_no=trade_no,
@@ -73,8 +74,8 @@ class WechatPay:
             out_trade_no=trade_no
         )
         return {'code': code, 'message': message}
-    
-    async def refund(self, trade_no, refund_no, refund_fee,total_fee, refund_desc):
+
+    async def refund(self, trade_no, refund_no, refund_fee, total_fee, refund_desc):
         """
         trade_no: str, 商户系统内部订单号
         refund_no: str, 商户系统内部退款单号
@@ -84,11 +85,11 @@ class WechatPay:
         code, message = await self.wxpay.refund(
             out_trade_no=trade_no,
             out_refund_no=refund_no,
-            amount={'refund': refund_fee,'total': total_fee,'currency': 'CNY'},
+            amount={'refund': refund_fee, 'total': total_fee, 'currency': 'CNY'},
             reason=refund_desc
         )
         return {'code': code, 'message': message}
-    
+
     async def query_refund(self, trade_no):
         """
         trade_no: str, 商户系统内部订单号
@@ -97,7 +98,7 @@ class WechatPay:
             out_trade_no=trade_no
         )
         return {'code': code, 'message': message}
-    
+
     async def close_order(self, trade_no):
         """
         trade_no: str, 商户系统内部订单号

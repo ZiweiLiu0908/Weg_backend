@@ -208,6 +208,7 @@ async def start_match_transcript(matchInfo: StartMatch, current_user_id: str = D
         if order['ai_used_times'] < order['ai_total_times']:
             oldest_valid_orderid = str(order['_id'])
             order_exists = True
+            break
 
     if not order_exists:
         return {"message": "Match failed", 'reason': "无剩余次数"}
@@ -229,13 +230,13 @@ async def start_match_transcript(matchInfo: StartMatch, current_user_id: str = D
         "user_id": current_user_id,
         "package": {"$in": ["ai1", "ai3", "ai8"]},
     }
-    earliest_order = await Order_repo.find_one(query, sort=[("created_at", 1)])
+    # earliest_order = await Order_repo.find_one(query, sort=[("created_at", 1)])
     # 获取时区为北京时间
     tz = pytz.timezone('Asia/Shanghai')
     current_time = datetime.now(tz)
 
     update_result = await Order_repo.update_one(
-        {'_id': earliest_order['_id']},  # 查询条件
+        {'_id': ObjectId(oldest_valid_orderid)},  # 查询条件
         {
             '$inc': {'ai_used_times': +1},  # ai_used_times 减少 1
             '$push': {'at_used_at': current_time}  # 在 at_used_at 添加当前时间
